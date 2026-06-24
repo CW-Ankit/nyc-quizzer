@@ -35,7 +35,7 @@ class BossService {
 
     private async getBossChannel(): Promise<GuildTextBasedChannel | null> {
         if (!this.client) return null;
-        const channelId = process.env.BROADCAST_CHANNEL_ID; // Use same channel or add BOSS_CHANNEL_ID to env
+        const channelId = process.env.BROADCAST_CHANNEL_ID;
         if (!channelId) return null;
 
         const channel = await this.client.channels.fetch(channelId);
@@ -44,13 +44,12 @@ class BossService {
     }
 
     private async dropBossQuestion() {
-        const channel = await this.getBossChannel();
+        const channel = await this.getBroadcastChannel();
         if (!channel) return;
 
         try {
-            // The Boss question is always "Extreme" - we force the AI to make it very hard
             const topic = ['webdev', 'databases', 'os', 'networking', 'cybersecurity'][Math.floor(Math.random() * 5)];
-            const quizData = await generateAIQuestion(topic); 
+            const quizData = await generateAIQuestion(topic, 'deep'); 
 
             const questionId = `boss_${Date.now()}`;
             const embed = new EmbedBuilder()
@@ -99,17 +98,17 @@ class BossService {
             return interaction.reply({ content: 'This Boss question is outdated!', ephemeral: true });
         }
 
-        // Check if user already attempted today
         if (dbManager.hasAttemptedBoss(interaction.user.id)) {
             return interaction.reply({ content: '❌ You have already used your one attempt for today\'s Boss!', ephemeral: true });
         }
 
-        // Record attempt immediately
         dbManager.recordBossAttempt(interaction.user.id);
 
         if (answer === this.currentBoss.correctAnswer) {
-            const bossXp = 100; // Massive reward
+            // Ensure user exists in the DB before adding points to avoid Foreign Key constraints
             dbManager.ensureUser(interaction.user.id, interaction.user.username);
+
+            const bossXp = 100;
             dbManager.addUserXp(interaction.user.id, 'boss', bossXp, interaction.user.username);
 
             const winEmbed = new EmbedBuilder()

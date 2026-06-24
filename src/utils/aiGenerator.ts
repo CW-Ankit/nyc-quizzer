@@ -75,64 +75,110 @@ function validateAiQuestion(value: unknown): AiQuestion {
     };
 }
 
-export async function generateAIQuestion(topic: string): Promise<AiQuestion> {
+export async function generateAIQuestion(topic: string, style: 'quick' | 'deep' = 'quick'): Promise<AiQuestion> {
+    const questions = await generateAIQuestions(topic, 1, style);
+    return questions[0];
+}
+
+export async function generateAIQuestions(topic: string, count: number, style: 'quick' | 'deep' = 'quick', retryCount = 0): Promise<AiQuestion[]> {
     const apiKey = OPENROUTER_API_KEY;
     if (!apiKey) {
         throw new Error('OPENROUTER_API_KEY is required for broadcast trivia');
     }
 
-    const prompt = `Generate a technical multiple-choice question (MCQ) about ${topic} for 1st and 2nd year college computer science students.
+    const isQuick = style === 'quick';
+    const prompt = isQuick 
+        ? `Generate exactly ${count} concise, interview-style multiple-choice questions (MCQs) about ${topic} for CS students.
+Return ONLY a JSON array of objects. No conversational text.
 
-Requirements:
-1. The question should be challenging but fair.
-2. Provide 4 options (a, b, c, d).
-3. Provide a clear, concise explanation for the correct answer.
-4. Return the response strictly in JSON format. Do not include any markdown formatting, code blocks, or conversational text.
+Format:
+[
+  {
+    "question": "...",
+    "options": { "a": "...", "b": "...", "c": "...", "d": "..." },
+    "correct": "a",
+    "explanation": "..."
+  }
+]`
+        : `Generate exactly ${count} complex, scenario-based technical challenges about ${topic} for advanced CS students.
+Return ONLY a JSON array of objects. No conversational text.
 
-JSON Format:
-{
-  "question": "The question text here",
-  "options": {
-    "a": "Option A text",
-    "b": "Option B text",
-    "c": "Option C text",
-    "d": "Option D text"
-  },
-  "correct": "a",
-  "explanation": "Detailed explanation of why 'a' is correct."
-}`;
-
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'HTTP-Referer': 'http://localhost:3000',
-            'X-Title': 'NYC Quizzer Bot',
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            model: OPENROUTER_MODEL,
-            messages: [{ role: 'user', content: prompt }],
-            temperature: 0.7,
-        }),
-    });
-
-    if (!response.ok) {
-        throw new Error(`OpenRouter request failed: ${response.status} ${response.statusText}`);
-    }
-
-    const data = (await response.json()) as OpenRouterResponse;
-    const content = data.choices?.[0]?.message?.content;
-
-    if (!isNonEmptyString(content)) {
-        throw new Error('OpenRouter response did not include question content');
-    }
-
-    const jsonContent = content.replace(/```json|```/g, '').trim();
+Format:
+[
+  {
+    "question": "...",
+    "options": { "a": "...", "b": "...", "c": "...", "d": "..." },
+    "correct": "a",
+    "explanation": "..."
+  }
+]`;
 
     try {
-        return validateAiQuestion(JSON.parse(jsonContent));
+        const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${apiKey}`,
+                'HTTP-Referer': 'http://localhost:3000',
+                'X-Title': 'NYC Quizzer Bot',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                model: OPENROUTER_MODEL,
+                messages: [{ role: 'user', content: prompt }],
+                temperature: 0.7,
+                response_format: { type: 'json_object' } 
+            }),
+        });
+
+        if (!response.ok) {
+            throw new Error(`OpenRouter request failed: ${response.status} ${response.statusText}`);
+        }
+
+        const data = (await response.json()) as OpenRouterResponse;
+        const content = data.choices?.[0]?.message?.content;
+
+        if (!isNonEmptyString(content)) {
+            throw new Error('OpenRouter response did not include question content');
+        }
+
+        const jsonContent = content.replace(/```(?:json)?/g, '').replace(/```/g, '').trim();
+
+        let cleanedContent = jsonContent;
+        const firstBracket = jsonContent.indexOf('[');
+        const lastBracket = jsonContent.lastIndexOf(']');
+        
+        if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+            cleanedContent = jsonContent.substring(firstBracket, lastBracket + 1);
+        }
+
+        const parsed = JSON.parse(cleanedContent);
+        const arrayData = Array.isArray(parsed) ? parsed : (parsed.questions || parsed.data || [parsed]);
+        
+        if (!Array.isArray(arrayData) || arrayData.length < count) {
+            if (retryCount < 1) {
+                return generateAIQuestions(topic, count, style, retryCount + 1);
+            }
+            throw new Error(`Insufficient questions generated (${arrayData?.length || 0}/${count})`);
+        }
+
+        return arrayData.map(q => {
+            const validated = validateAiQuestion(q);
+            return {
+                question: validated.question,
+                option_a: validated.options.a,
+                option_b: validated.options.b,
+                option_c: validated.options.c,
+                option_d: validated.options.d,
+                correct: validated.correct,
+                explanation: validated.explanation,
+            };
+        });
     } catch (error) {
-        throw new Error('OpenRouter response was not a valid trivia question', { cause: error });
+        if (retryCount < 1) {
+            console.log(`AI generation failed for ${topic}, retrying once...`);
+            return generateAIQuestions(topic, count, style, retryCount + 1);
+        }
+        console.error('AI Generator failed after retry:', error);
+        throw error;
     }
 }

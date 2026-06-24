@@ -1,6 +1,7 @@
 import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } from 'discord.js';
 import { quizManager } from '../utils/quizManager.js';
 import { dbManager } from '../utils/db.js';
+import { roleManager } from '../utils/roleManager.js';
 
 export default {
     data: new SlashCommandBuilder()
@@ -8,23 +9,46 @@ export default {
         .setDescription('Technical Knowledge Ecosystem Commands')
         .addSubcommand(sub =>
             sub.setName('start')
-                .setDescription('Start a curated quiz (Restricted)')
+                .setDescription('Start a quiz')
+                .addStringOption(opt => 
+                    opt.setName('type')
+                        .setDescription('Choose between curated set or custom AI quiz')
+                        .setRequired(true)
+                        .addChoices(
+                            { name: 'Curated Set', value: 'set' },
+                            { name: 'Custom AI', value: 'custom' },
+                        )
+                )
+                .addIntegerOption(opt => 
+                    opt.setName('set_id')
+                        .setDescription('The ID of the curated set')
+                        .setRequired(false)
+                )
+                .addStringOption(opt => 
+                    opt.setName('set_name')
+                        .setDescription('The name of the curated set')
+                        .setRequired(false)
+                )
                 .addStringOption(opt => 
                     opt.setName('topic')
-                        .setDescription('Select topic')
-                        .setRequired(true)
+                        .setDescription('Topic for custom quiz')
+                        .setRequired(false)
                         .addChoices(
                             { name: 'Web Development', value: 'webdev' },
                             { name: 'Databases', value: 'databases' },
                             { name: 'Operating Systems', value: 'os' },
                             { name: 'Networking', value: 'networking' },
                             { name: 'Cybersecurity', value: 'cybersecurity' },
+                            { name: 'Artificial Intelligence', value: 'ai' },
+                            { name: 'Machine Learning', value: 'ml' },
+                            { name: 'Deep Learning', value: 'deeplearning' },
+                            { name: 'Large Language Models', value: 'llm' },
                         )
                 )
                 .addStringOption(opt =>
                     opt.setName('difficulty')
-                        .setDescription('Select difficulty')
-                        .setRequired(true)
+                        .setDescription('Difficulty for custom quiz')
+                        .setRequired(false)
                         .addChoices(
                             { name: 'Easy', value: 'Easy' },
                             { name: 'Medium', value: 'Medium' },
@@ -36,6 +60,15 @@ export default {
                         .setDescription('Number of questions')
                         .setRequired(false)
                 )
+                .addIntegerOption(opt => 
+                    opt.setName('duration')
+                        .setDescription('Seconds per question')
+                        .setRequired(false)
+                )
+        )
+        .addSubcommand(sub =>
+            sub.setName('sets')
+                .setDescription('List all available curated quiz sets')
         )
         .addSubcommand(sub =>
             sub.setName('leaderboard')
@@ -61,6 +94,10 @@ export default {
                             { name: 'Operating Systems', value: 'os' },
                             { name: 'Networking', value: 'networking' },
                             { name: 'Cybersecurity', value: 'cybersecurity' },
+                            { name: 'Artificial Intelligence', value: 'ai' },
+                            { name: 'Machine Learning', value: 'ml' },
+                            { name: 'Deep Learning', value: 'deeplearning' },
+                            { name: 'Large Language Models', value: 'llm' },
                         )
                 )
         )
@@ -76,9 +113,104 @@ export default {
                         .setDescription('Admin action')
                         .setRequired(true)
                         .addChoices(
-                            { name: 'Add Question', value: 'add' },
-                            { name: 'Clear Scores', value: 'clear' },
+                            { name: 'Create Set', value: 'create_set' },
+                            { name: 'Add Question', value: 'add_question' },
+                            { name: 'Update Visibility', value: 'update_visibility' },
+                            { name: 'Archive/Unarchive', value: 'archive' },
+                            { name: 'Delete Set', value: 'delete_set' },
+                            { name: 'Clear Scores', value: 'clear_scores' },
                         )
+                )
+                .addStringOption(opt =>
+                    opt.setName('name')
+                        .setDescription('Name of the set')
+                        .setRequired(false)
+                )
+                .addStringOption(opt =>
+                    opt.setName('description')
+                        .setDescription('Set description')
+                        .setRequired(false)
+                )
+                .addStringOption(opt =>
+                    opt.setName('visibility')
+                        .setDescription('Visibility (public/event)')
+                        .setRequired(false)
+                        .addChoices(
+                            { name: 'Public', value: 'public' },
+                            { name: 'Event', value: 'event' },
+                        )
+                )
+                .addStringOption(opt =>
+                    opt.setName('topic')
+                        .setDescription('Topic of the question')
+                        .setRequired(false)
+                        .addChoices(
+                            { name: 'Web Development', value: 'webdev' },
+                            { name: 'Databases', value: 'databases' },
+                            { name: 'Operating Systems', value: 'os' },
+                            { name: 'Networking', value: 'networking' },
+                            { name: 'Cybersecurity', value: 'cybersecurity' },
+                            { name: 'Artificial Intelligence', value: 'ai' },
+                            { name: 'Machine Learning', value: 'ml' },
+                            { name: 'Deep Learning', value: 'deeplearning' },
+                            { name: 'Large Language Models', value: 'llm' },
+                        )
+                )
+                .addStringOption(opt =>
+                    opt.setName('difficulty')
+                        .setDescription('Difficulty')
+                        .setRequired(false)
+                        .addChoices(
+                            { name: 'Easy', value: 'Easy' },
+                            { name: 'Medium', value: 'Medium' },
+                            { name: 'Hard', value: 'Hard' },
+                        )
+                )
+                .addStringOption(opt =>
+                    opt.setName('question')
+                        .setDescription('The question text')
+                        .setRequired(false)
+                )
+                .addStringOption(opt =>
+                    opt.setName('option_a')
+                        .setDescription('Option A')
+                        .setRequired(false)
+                )
+                .addStringOption(opt =>
+                    opt.setName('option_b')
+                        .setDescription('Option B')
+                        .setRequired(false)
+                )
+                .addStringOption(opt =>
+                    opt.setName('option_c')
+                        .setDescription('Option C')
+                        .setRequired(false)
+                )
+                .addStringOption(opt =>
+                    opt.setName('option_d')
+                        .setDescription('Option D')
+                        .setRequired(false)
+                )
+                .addStringOption(opt =>
+                    opt.setName('correct')
+                        .setDescription('Correct option (a/b/c/d)')
+                        .setRequired(false)
+                        .addChoices(
+                            { name: 'A', value: 'a' },
+                            { name: 'B', value: 'b' },
+                            { name: 'C', value: 'c' },
+                            { name: 'D', value: 'd' },
+                        )
+                )
+                .addStringOption(opt =>
+                    opt.setName('explanation')
+                        .setDescription('Explanation')
+                        .setRequired(false)
+                )
+                .addBooleanOption(opt =>
+                    opt.setName('status')
+                        .setDescription('Archive status (true = archive, false = unarchive)')
+                        .setRequired(false)
                 )
         ),
 
@@ -107,11 +239,40 @@ export default {
                 return interaction.reply({ content: '❌ You already have an active quiz session in this channel!', ephemeral: true });
             }
 
-            const topic = interaction.options.getString('topic');
-            const difficulty = interaction.options.getString('difficulty');
-            const length = interaction.options.getInteger('length') || 5;
+            const type = interaction.options.getString('type');
+            
+            if (type === 'set') {
+                const setId = interaction.options.getInteger('set_id');
+                const setName = interaction.options.getString('set_name');
+                
+                if (!setId && !setName) {
+                    return interaction.reply({ content: '❌ Please provide either a set ID or a set name.', ephemeral: true });
+                }
 
-            await quizManager.startSession(interaction, topic, difficulty, length);
+                const identifier = setId || setName;
+                await quizManager.startSetSession(interaction, identifier);
+            } else if (type === 'custom') {
+                const topic = interaction.options.getString('topic');
+                const difficulty = interaction.options.getString('difficulty') || 'Medium';
+                const length = interaction.options.getInteger('length') || 5;
+                const duration = interaction.options.getInteger('duration') || 30;
+                
+                if (!topic) return interaction.reply({ content: '❌ Please provide a topic for your custom quiz.', ephemeral: true });
+                await quizManager.startCustomSession(interaction, topic, difficulty, length, duration);
+            }
+        }
+
+        if (subcommand === 'sets') {
+            const sets = dbManager.getAvailableSets();
+            if (sets.length === 0) {
+                return interaction.reply({ content: 'No curated quiz sets available yet.', ephemeral: true });
+            }
+
+            const list = sets.map((s: any) => `**${s.name}**\n📝 ${s.description || 'No description'}`).join('\n\n');
+            await interaction.reply({
+                content: `📚 **Available Quiz Sets:**\n\n${list}\n\nUse \`/quiz start type:Curated Set setName:<name>\` to begin!`,
+                ephemeral: false,
+            });
         }
 
         if (subcommand === 'leaderboard') {
@@ -135,7 +296,13 @@ export default {
 
                 let description = slicedData.map((entry: any, index: number) => {
                     const rank = start + index + 1;
-                    return `**${rank}.** ${entry.username} — \`${entry.total} K-XP\``;
+                    let medal = '';
+                    if (rank === 1) medal = '🥇 ';
+                    else if (rank === 2) medal = '🥈 ';
+                    else if (rank === 3) medal = '🥉 ';
+                    else medal = '';
+
+                    return `${medal}**${rank}.** ${entry.username} — \`${entry.total} K-XP\``;
                 }).join('\n');
 
                 return new EmbedBuilder()
@@ -146,8 +313,8 @@ export default {
             };
 
             const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-                new ButtonBuilder().setCustomId('prev').setLabel('⬅️').setStyle(ButtonStyle.Secondary).setDisabled(true),
-                new ButtonBuilder().setCustomId('next').setLabel('➡️').setStyle(ButtonStyle.Secondary).setDisabled(totalPages <= 1)
+                new ButtonBuilder().setCustomId('prev').setLabel('Previous').setStyle(ButtonStyle.Secondary).setDisabled(true),
+                new ButtonBuilder().setCustomId('next').setLabel('Next').setStyle(ButtonStyle.Secondary).setDisabled(totalPages <= 1)
             );
 
             const response = await interaction.reply({ embeds: [generateEmbed(page)], components: [row] });
@@ -194,18 +361,74 @@ export default {
         }
 
         if (subcommand === 'admin') {
-            const action = interaction.options.getString('action');
-            
-            // Admin check (e.g. Administrator permission)
-            if (!interaction.member.permissions.has('Administrator')) {
-                return interaction.reply({ content: '❌ Only server administrators can use this command.', ephemeral: true });
+            // 1. Role Check: Must be "Not your Quiz Master"
+            if (!roleManager.isQuizMaster(interaction.member)) {
+                return interaction.reply({ content: '❌ Only users with the **Not your Quiz Master** role can manage quizzes.', ephemeral: true });
             }
 
-            if (action === 'clear') {
-                // Implementation for clearing scores
-                await interaction.reply({ content: '⚠️ Feature coming soon: Score reset.' });
-            } else if (action === 'add') {
-                await interaction.reply({ content: '🛠️ Use the bot dashboard or specific admin commands to add curated questions.' });
+            const action = interaction.options.getString('action');
+            const name = interaction.options.getString('name');
+            const description = interaction.options.getString('description');
+            const visibility = interaction.options.getString('visibility') || 'public';
+            const topic = interaction.options.getString('topic');
+            const difficulty = interaction.options.getString('difficulty');
+            const question = interaction.options.getString('question');
+            const a = interaction.options.getString('option_a');
+            const b = interaction.options.getString('option_b');
+            const c = interaction.options.getString('option_c');
+            const d = interaction.options.getString('option_d');
+            const correct = interaction.options.getString('correct');
+            const explanation = interaction.options.getString('explanation');
+            const status = interaction.options.getBoolean('status');
+
+            try {
+                if (action === 'create_set') {
+                    if (!name) return interaction.reply({ content: '❌ Name is required to create a set.', ephemeral: true });
+                    dbManager.createSet(name, description || '', interaction.user.id, visibility);
+                    return interaction.reply({ content: `✅ Created set **${name}** (${visibility})!`, ephemeral: true });
+                }
+
+                if (action === 'add_question') {
+                    if (!name || !topic || !difficulty || !question || !a || !b || !c || !d || !correct || !explanation) {
+                        return interaction.reply({ content: '❌ All question fields are required for add_question.', ephemeral: true });
+                    }
+                    const set = dbManager.getSetDetails(name);
+                    if (!set) return interaction.reply({ content: '❌ Set not found.', ephemeral: true });
+                    
+                    dbManager.addCuratedQuestion({
+                        set_id: set.id,
+                        topic, difficulty, question, a, b, c, d, correct, explanation
+                    });
+                    return interaction.reply({ content: `✅ Question added to set **${name}**!`, ephemeral: true });
+                }
+
+                if (action === 'update_visibility') {
+                    if (!name) return interaction.reply({ content: '❌ Name is required.', ephemeral: true });
+                    dbManager.updateSetVisibility(name, visibility);
+                    return interaction.reply({ content: `✅ Set **${name}** visibility updated to **${visibility}**.`, ephemeral: true });
+                }
+
+                if (action === 'archive') {
+                    if (name === undefined || status === undefined) return interaction.reply({ content: '❌ Name and status are required.', ephemeral: true });
+                    dbManager.archiveSet(name, status);
+                    return interaction.reply({ content: `✅ Set **${name}** ${status ? 'archived' : 'unarchived'}.`, ephemeral: true });
+                }
+
+                if (action === 'delete_set') {
+                    if (!name) return interaction.reply({ content: '❌ Name is required.', ephemeral: true });
+                    dbManager.deleteSet(name);
+                    return interaction.reply({ content: `✅ Set **${name}** and its questions have been deleted.`, ephemeral: true });
+                }
+
+                if (action === 'clear_scores') {
+                    dbManager.clearScores();
+                    return interaction.reply({ content: '✅ All K-XP scores have been reset.', ephemeral: true });
+                }
+
+                return interaction.reply({ content: '❌ Invalid admin action.', ephemeral: true });
+            } catch (error) {
+                console.error(error);
+                return interaction.reply({ content: '❌ An error occurred while processing the admin request.', ephemeral: true });
             }
         }
     },

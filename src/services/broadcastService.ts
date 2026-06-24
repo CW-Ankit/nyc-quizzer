@@ -10,8 +10,9 @@ import {
 } from 'discord.js';
 import { generateAIQuestion } from '../utils/aiGenerator.js';
 import { dbManager } from '../utils/db.js';
+import { quizManager } from '../utils/quizManager.js';
 
-type Topic = 'webdev' | 'databases' | 'os' | 'networking' | 'cybersecurity';
+type Topic = 'webdev' | 'databases' | 'os' | 'networking' | 'cybersecurity' | 'ai' | 'ml' | 'deeplearning' | 'llm';
 type Answer = 'a' | 'b' | 'c' | 'd';
 
 type QuizData = {
@@ -43,6 +44,7 @@ class BroadcastService {
 
     public init(client: Client) {
         this.client = client;
+        quizManager.setClient(client);
         
         const intervalCron = process.env.DROP_INTERVAL || '*/30 * * * *';
         const minutePart = intervalCron.split(' ')[0];
@@ -73,13 +75,23 @@ class BroadcastService {
             const val = parseInt(minutePart.substring(2));
             if (!isNaN(val)) intervalMinutes = val;
         } else {
-            // Specific minute (e.g., "0"), treat as 60m for duration logic
             intervalMinutes = 60;
         }
 
-        // Rule: 50% of the interval, capped between 30s and 120s
-        const calculated = intervalMinutes * 60 * 0.5;
-        this.dynamicDuration = Math.max(30000, Math.min(120000, calculated));
+        let durationMs: number;
+
+        if (intervalMinutes >= 10) {
+            // For long intervals, reveal 5 minutes before the next drop
+            durationMs = (intervalMinutes - 5) * 60 * 1000;
+        } else if (intervalMinutes > 1) {
+            // For mid intervals, reveal at 80% of the time
+            durationMs = intervalMinutes * 60 * 0.8 * 1000;
+        } else {
+            // For 1-minute testing, reveal after 45 seconds
+            durationMs = 45 * 1000;
+        }
+
+        this.dynamicDuration = durationMs;
     }
 
     private async getBroadcastChannel(): Promise<GuildTextBasedChannel | null> {
@@ -98,7 +110,13 @@ class BroadcastService {
 
         try {
             const topic = this.topics[Math.floor(Math.random() * this.topics.length)];
-            const quizData = await generateAIQuestion(topic);
+            const quizData = await generateAIQuestion(topic, 'quick');
+            
+            if (!quizData || !quizData.question) {
+                console.error(`AI Generator failed to provide a valid question for topic: ${topic}`);
+                return;
+            }
+
             const questionId = `bc_${Date.now()}`;
 
             const embed = new EmbedBuilder()
@@ -106,10 +124,10 @@ class BroadcastService {
                 .setTitle('⚡ LIVE KNOWLEDGE DROP!')
                 .setDescription(`**Topic: ${topic.toUpperCase()}**\n\n${quizData.question}\n\n⏱️ **You have ${this.dynamicDuration / 1000} seconds to lock in your answer!**`)
                 .addFields(
-                    { name: 'A', value: quizData.options.a, inline: true },
-                    { name: 'B', value: quizData.options.b, inline: true },
-                    { name: 'C', value: quizData.options.c, inline: true },
-                    { name: 'D', value: quizData.options.d, inline: true }
+                    { name: 'A', value: quizData.option_a, inline: true },
+                    { name: 'B', value: quizData.option_b, inline: true },
+                    { name: 'C', value: quizData.option_c, inline: true },
+                    { name: 'D', value: quizData.option_d, inline: true }
                 )
                 .setFooter({ text: 'Lock in your answer using the buttons below!' })
                 .setTimestamp();
@@ -161,9 +179,17 @@ class BroadcastService {
             if (data.answer === correctAnswer) {
                 winners.push(`<@${userId}>`);
                 
-                // Award K-XP to winners
-                dbManager.ensureUser(userId, 'User'); // Update username later if needed
-                dbManager.addUserXp(userId, topic, 25, 'User');
+                // Ensure user exists in the DB and award XP with their actual username
+                const user = await this.client?.users.fetch(userId);
+                const username = user?.username || 'Unknown User';
+                
+                dbManager.ensureUser(userId, username); 
+                const totalTopicXp = dbManager.addUserXp(userId, topic, 25, username);
+                
+                if (this.client) {
+                    const { roleManager } = await import('../utils/roleManager.js');
+                    await roleManager.checkAndGrantRole(this.client, userId, topic, totalTopicXp);
+                }
             }
         }
 
@@ -173,7 +199,7 @@ class BroadcastService {
             .setTitle('🏁 TIME IS UP!')
             .setDescription(`**Topic: ${topic.toUpperCase()}**\n\n${this.lastQuizData?.question}`)
             .addFields(
-                { name: 'Correct Answer', value: `**${correctAnswer.toUpperCase()}) ${options[correctAnswer]}**`, inline: false },
+                { name: 'Correct Answer', value: `**${correctAnswer.toUpperCase()}) ${this.getOptionText(correctAnswer)}**`, inline: false },
                 { name: 'Explanation', value: explanation, inline: false }
             )
             .setTimestamp();
@@ -199,6 +225,18 @@ class BroadcastService {
         // Clear state for next question
         this.currentQuestion = null;
         this.lastQuizData = null;
+    }
+
+    private getOptionText(answer: Answer): string {
+        const data = this.lastQuizData;
+        if (!data) return 'N/A';
+        const options: any = {
+            a: data.option_a,
+            b: data.option_b,
+            c: data.option_c,
+            d: data.option_d
+        };
+        return options[answer] || 'N/A';
     }
 
     public async handleInteraction(interaction: ButtonInteraction) {
